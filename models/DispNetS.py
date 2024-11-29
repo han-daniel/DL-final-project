@@ -25,7 +25,7 @@ def downsample_conv(in_planes, out_planes, kernel_size=3):
     # Modified to include SE block and PReLU instead of ReLU
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=2, padding=(kernel_size-1)//2),
-        nn.PReLU(),  # Replace ReLU with PReLU as mentioned in your proposal
+        nn.PReLU(),  # Replace ReLU with PReLU as mentioned in proposal
         nn.Conv2d(out_planes, out_planes, kernel_size=kernel_size, padding=(kernel_size-1)//2),
         nn.PReLU(),
         SEBlock(out_planes)  # Add SE block after convolutions
