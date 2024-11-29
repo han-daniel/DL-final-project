@@ -72,11 +72,11 @@ def main():
         file_name = '-'.join(file_path.splitall()[1:])
 
         if args.output_disp:
-            disp = (255*tensor2array(output, max_value=None, colormap='bone')).astype(np.uint8)
+            disp = (255*tensor2array(output, max_value=1.0, colormap='bone')).astype(np.uint8)
             imsave(output_dir/'{}_disp{}'.format(file_name, file_ext), np.transpose(disp, (1,2,0)))
         if args.output_depth:
             depth = 1/output
-            depth = (255*tensor2array(depth, max_value=10, colormap='rainbow')).astype(np.uint8)
+            depth = (255*tensor2array(depth, max_value=50, colormap='rainbow')).astype(np.uint8)
             imsave(output_dir/'{}_depth{}'.format(file_name, file_ext), np.transpose(depth, (1,2,0)))
 
 
