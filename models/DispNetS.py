@@ -3,32 +3,52 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import xavier_uniform_, zeros_
 
-class SEBlock(nn.Module):
-    def __init__(self, channel, reduction=16):
-        super(SEBlock, self).__init__()
-        # Using reduction=16 as it's a common choice that balances efficiency and performance
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channel, channel // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel // reduction, channel, bias=False),
+class SEBottleneck(nn.Module):
+    def __init__(self, in_planes, out_planes):
+        super().__init__()
+        
+        # Main Path (bottleneck structure)
+        self.main_path = nn.Sequential(
+            # First Conv+BN+PReLU block (1x1)
+            nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_planes),
+            nn.PReLU(),
+            # Second Conv+BN+PReLU block (3x3)
+            nn.Conv2d(out_planes, 2*out_planes, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(2*out_planes),
+            nn.PReLU(),
+            # Final Conv+BN (1x1)
+            nn.Conv2d(2*out_planes, 2*out_planes, kernel_size=1, bias=False),
+            nn.BatchNorm2d(2*out_planes)
+        )
+        
+        # SE Block
+        self.se = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(2*out_planes, 2*out_planes//16, kernel_size=1, bias=False),
+            nn.PReLU(),
+            nn.Conv2d(2*out_planes//16, 2*out_planes, kernel_size=1, bias=False),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
+        # Main path
+        out = self.main_path(x)
+        
+        # SE attention
+        se_weight = self.se(out)
+        out = out * se_weight
+        
+        # Skip connection
+        return x + out
 
+# Update downsample_conv function
 def downsample_conv(in_planes, out_planes, kernel_size=3):
-    # Modified to include SE block and PReLU instead of ReLU
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=2, padding=(kernel_size-1)//2),
-        nn.PReLU(),  # Replace ReLU with PReLU as mentioned in proposal
-        nn.Conv2d(out_planes, out_planes, kernel_size=kernel_size, padding=(kernel_size-1)//2),
+        nn.BatchNorm2d(out_planes),
         nn.PReLU(),
-        SEBlock(out_planes)  # Add SE block after convolutions
+        SEBottleneck(out_planes, out_planes)
     )
 
 
