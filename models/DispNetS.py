@@ -7,6 +7,14 @@ class SEBottleneck(nn.Module):
     def __init__(self, in_planes, out_planes):
         super().__init__()
         
+        # Projection shortcut if dimensions don't match
+        self.shortcut = None
+        if in_planes != out_planes * 2:  # *2 because we double channels in main path
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, out_planes * 2, kernel_size=1, bias=False),
+                nn.BatchNorm2d(out_planes * 2)
+            )
+        
         # Main Path (bottleneck structure)
         self.main_path = nn.Sequential(
             # First Conv+BN+PReLU block (1x1)
@@ -14,24 +22,26 @@ class SEBottleneck(nn.Module):
             nn.BatchNorm2d(out_planes),
             nn.PReLU(),
             # Second Conv+BN+PReLU block (3x3)
-            nn.Conv2d(out_planes, 2*out_planes, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(2*out_planes),
+            nn.Conv2d(out_planes, out_planes * 2, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_planes * 2),
             nn.PReLU(),
             # Final Conv+BN (1x1)
-            nn.Conv2d(2*out_planes, 2*out_planes, kernel_size=1, bias=False),
-            nn.BatchNorm2d(2*out_planes)
+            nn.Conv2d(out_planes * 2, out_planes * 2, kernel_size=1, bias=False),
+            nn.BatchNorm2d(out_planes * 2)
         )
         
         # SE Block
         self.se = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(2*out_planes, 2*out_planes//16, kernel_size=1, bias=False),
+            nn.Conv2d(out_planes * 2, out_planes * 2 // 16, kernel_size=1, bias=False),
             nn.PReLU(),
-            nn.Conv2d(2*out_planes//16, 2*out_planes, kernel_size=1, bias=False),
+            nn.Conv2d(out_planes * 2 // 16, out_planes * 2, kernel_size=1, bias=False),
             nn.Sigmoid()
         )
 
     def forward(self, x):
+        identity = x if self.shortcut is None else self.shortcut(x)
+        
         # Main path
         out = self.main_path(x)
         
@@ -40,7 +50,7 @@ class SEBottleneck(nn.Module):
         out = out * se_weight
         
         # Skip connection
-        return x + out
+        return identity + out
 
 # Update downsample_conv function
 def downsample_conv(in_planes, out_planes, kernel_size=3):
