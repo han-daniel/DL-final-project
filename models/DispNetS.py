@@ -4,44 +4,30 @@ import torch.nn.functional as F
 from torch.nn.init import xavier_uniform_, zeros_
 
 class SEBottleneck(nn.Module):
-    def __init__(self, in_planes, out_planes):
+    def __init__(self, channels):
         super().__init__()
         
-        # Projection shortcut if dimensions don't match
-        self.shortcut = None
-        if in_planes != out_planes * 2:  # *2 because we double channels in main path
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, out_planes * 2, kernel_size=1, bias=False),
-                nn.BatchNorm2d(out_planes * 2)
-            )
-        
-        # Main Path (bottleneck structure)
+        # Main Path
         self.main_path = nn.Sequential(
-            # First Conv+BN+PReLU block (1x1)
-            nn.Conv2d(in_planes, out_planes, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_planes),
+            nn.Conv2d(channels, channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels),
             nn.PReLU(),
-            # Second Conv+BN+PReLU block (3x3)
-            nn.Conv2d(out_planes, out_planes * 2, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_planes * 2),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
             nn.PReLU(),
-            # Final Conv+BN (1x1)
-            nn.Conv2d(out_planes * 2, out_planes * 2, kernel_size=1, bias=False),
-            nn.BatchNorm2d(out_planes * 2)
+            nn.Conv2d(channels, channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels)
         )
         
-        # SE Block
         self.se = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(out_planes * 2, out_planes * 2 // 16, kernel_size=1, bias=False),
+            nn.Conv2d(channels, channels // 16, kernel_size=1, bias=False),
             nn.PReLU(),
-            nn.Conv2d(out_planes * 2 // 16, out_planes * 2, kernel_size=1, bias=False),
+            nn.Conv2d(channels // 16, channels, kernel_size=1, bias=False),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        identity = x if self.shortcut is None else self.shortcut(x)
-        
         # Main path
         out = self.main_path(x)
         
@@ -49,17 +35,16 @@ class SEBottleneck(nn.Module):
         se_weight = self.se(out)
         out = out * se_weight
         
-        # Skip connection
-        return identity + out
+        return x + out
 
-# Update downsample_conv function
 def downsample_conv(in_planes, out_planes, kernel_size=3):
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=2, padding=(kernel_size-1)//2),
         nn.BatchNorm2d(out_planes),
         nn.PReLU(),
-        SEBottleneck(out_planes, out_planes)
+        SEBottleneck(out_planes) 
     )
+
 
 
 def predict_disp(in_planes):
